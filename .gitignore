@@ -1,0 +1,19 @@
+# Output executables
+*.exe
+*.app
+*.old
+*.bak
+*StickFightLauncher*
+
+# Log files
+*.log
+
+# Supervise on Linux
+run
+supervise/
+
+# Windows
+run.bat
+
+# OS leftovers
+desktop.ini
