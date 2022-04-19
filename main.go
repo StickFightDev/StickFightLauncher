@@ -10,19 +10,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/JoshuaDoes/logger"
 )
 
 var (
 	//Command-line flags and their defaults
+	verbosityLevel = 0
 	ip = "72.9.147.58"
 	port = 1337
 	dll = "https://raw.githubusercontent.com/StickFightDev/StickFightLauncher/dev/mod/Assembly-CSharp.srv.dll"
 	dllSha256 = "https://raw.githubusercontent.com/StickFightDev/StickFightLauncher/dev/mod/SHA256"
-	verbosityLevel = 0
-	installExe = ""
 	modDll = "Assembly-CSharp.srv.dll"
+	isSteam = false
+	sfExe = ""
 
 	//Things to be used by the launcher
 	log *logger.Logger
@@ -33,13 +35,14 @@ var (
 )
 
 func init() {
+	flag.IntVar(&verbosityLevel, "verbosity", verbosityLevel, "The verbosity level of debug log output")
 	flag.StringVar(&ip, "ip", ip, "The IP to connect to")
 	flag.IntVar(&port, "port", port, "The port to connect to")
 	flag.StringVar(&dll, "dll", dll, "The URL of the DLL to use")
 	flag.StringVar(&dllSha256, "sha256", dllSha256, "The SHA256 of the DLL to compare against")
-	flag.StringVar(&installExe, "installExe", installExe, "The relative or exact path to StickFight.exe")
 	flag.StringVar(&modDll, "modDll", modDll, "The filename to give the cached assembly")
-	flag.IntVar(&verbosityLevel, "verbosity", verbosityLevel, "The verbosity level of debug log output")
+	flag.BoolVar(&isSteam, "steam", isSteam, "Set to true if launched from Steam non-game shortcut")
+	flag.StringVar(&sfExe, "sfExe", sfExe, "The relative or exact path to StickFight.exe")
 	flag.Parse()
 
 	log = logger.NewLogger("sf:launch", verbosityLevel)
@@ -49,16 +52,16 @@ func main() {
 	//panic(SHA256("mod/Assembly-CSharp.srv.dll"))
 
 	log.Info("Searching for Stick Fight...")
-	if !FindInstall(installExe) {
+	if !FindInstall(sfExe) {
 		if !FindInstall("StickFight.exe") {
 			if !FindInstall("C:\\Program Files (x86)\\Steam\\steamapps\\common\\StickFightTheGame\\StickFight.exe") {
 				log.Fatal("unable to find Stick Fight")
 			}
 		}
 	}
-	log.Info("Found Stick Fight: ", installExe)
+	log.Info("Found Stick Fight: ", sfExe)
 
-	installPath := filepath.Dir(installExe)
+	installPath := filepath.Dir(sfExe)
 	managedPath := installPath + "\\StickFight_Data\\Managed\\"
 
 	installDLL := managedPath + "Assembly-CSharp.dll"
@@ -99,13 +102,42 @@ func main() {
 	}
 
 	log.Info("Launching Stick Fight...")
-	sf := exec.Command(installExe,
-		"-address", ip, //"-address", fmt.Sprintf("%s:%d", ip, port),
-	)
+	//sf := exec.Command("steam://674940", "-address", ip)
+	sf := exec.Command("rundll32", "url.dll,FileProtocolHandler", fmt.Sprintf("steam://rungameid/674940 -address %s", ip))
+	if isSteam {
+		sf = exec.Command(sfExe, "-address", ip)
+	}
 	sf.Stdout = os.Stdout
 	sf.Stderr = os.Stderr
 	sf.Stdin = os.Stdin
-	log.Info("Process ended with code: ", sf.Run())
+	
+	err = sf.Run()
+	if err != nil {
+		log.Fatal("Process ended with code: ", err)
+	}
+
+	pid := -1
+	pidTime := time.Now()
+	for {
+		pid, err = processID("StickFight.exe")
+		if err == nil {
+			break
+		}
+		if time.Since(pidTime).Seconds() > 5 {
+			log.Fatal("Unable to find PID by name: ", err)
+		}
+	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		log.Fatal("Unable to find process by PID: ", err)
+	}
+
+	log.Info("Waiting for game to exit...")
+	_, err = proc.Wait()
+	if err != nil {
+		log.Fatal("Game ended with code: ", err)
+	}
 }
 
 func Restore(backupDLL, installDLL string) {
@@ -121,7 +153,7 @@ func FindInstall(path string) bool {
 		return false
 	}
 
-	installExe = path
+	sfExe = path
 	return true
 }
 
