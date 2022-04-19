@@ -11,8 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
-
-	"github.com/JoshuaDoes/logger"
 )
 
 var (
@@ -25,9 +23,6 @@ var (
 	modDll = "Assembly-CSharp.srv.dll"
 	isSteam = false
 	sfExe = ""
-
-	//Things to be used by the launcher
-	log *logger.Logger
 
 	installDLLs = []string{
 		"6058775b1416c1bf80bf3bc5cdd72ddbd55ae5482c087b884d02264dc6b0fbd1", //v25
@@ -44,38 +39,40 @@ func init() {
 	flag.BoolVar(&isSteam, "steam", isSteam, "Set to true if launched from Steam non-game shortcut")
 	flag.StringVar(&sfExe, "sfExe", sfExe, "The relative or exact path to StickFight.exe")
 	flag.Parse()
-
-	log = logger.NewLogger("sf:launch", verbosityLevel)
 }
 
 func main() {
-	//panic(SHA256("mod/Assembly-CSharp.srv.dll"))
+	logWarning("!!! DON'T CLOSE ME !!!")
+	logWarning("!! I am going to restore your game back to normal once you're finished playing !!")
+	logWarning("! If you close me before the game, you'll need to re-validate or re-install it !")
+	logWarning("!!! YOU HAVE BEEN WARNED !!!")
+	logBlank()
 
-	log.Info("Searching for Stick Fight...")
+	logInfo("Searching for Stick Fight...")
 	if !FindInstall(sfExe) {
 		if !FindInstall("StickFight.exe") {
 			if !FindInstall("C:\\Program Files (x86)\\Steam\\steamapps\\common\\StickFightTheGame\\StickFight.exe") {
-				log.Fatal("unable to find Stick Fight")
+				logFatal("unable to find Stick Fight")
 			}
 		}
 	}
-	log.Info("Found Stick Fight: ", sfExe)
+	logInfo("Found Stick Fight: %s", sfExe)
 
 	installPath := filepath.Dir(sfExe)
 	managedPath := installPath + "\\StickFight_Data\\Managed\\"
 
 	installDLL := managedPath + "Assembly-CSharp.dll"
 	if !PathExists(installDLL) {
-		log.Fatal("unable to find Stick Fight assembly")
+		logFatal("unable to find Stick Fight assembly")
 	}
 	installSHA256 := SHA256(installDLL)
-	log.Info("Found Stick Fight assembly: ", installDLL, " (" + installSHA256 + ")")
+	logInfo("Found Stick Fight assembly: %s (%s)", installDLL, installSHA256)
 
-	log.Info("Backing up Stick Fight assembly...")
+	logInfo("Backing up Stick Fight assembly...")
 	backupDLL := managedPath + "Assembly-CSharp.old.dll"
 	os.Rename(installDLL, backupDLL)
 
-	log.Debug("Deferring restore of Stick Fight assembly to end of main...")
+	logDebug("Deferring restore of Stick Fight assembly to end of main...")
 	defer Restore(backupDLL, installDLL)
 
 	serverDLL := managedPath + modDll
@@ -83,26 +80,25 @@ func main() {
 	gitSHA256 := string(HTTPGET(dllSha256))
 
 	if !PathExists(serverDLL) || dllSHA256 != gitSHA256 {
-		log.Info("Stick Fight assembly (" + dllSHA256 + ") is outdated, updating to (" + gitSHA256 + ")...")
+		logInfo("Stick Fight assembly (%s) is outdated, updating to (%s)...", dllSHA256, gitSHA256)
 		downloadDLL := HTTPGET(dll)
 		if len(downloadDLL) == 0 {
-			log.Fatal("unable to download server assembly")
+			logFatal("unable to download server assembly")
 		}
 
 		err := os.WriteFile(serverDLL, downloadDLL, 0777)
 		if err != nil {
-			log.Fatal("unable to write server assembly")
+			logFatal("unable to write server assembly")
 		}
 	}
 
-	log.Info("Installing server assembly...")
+	logInfo("Installing server assembly...")
 	_, err := CopyFile(serverDLL, installDLL)
 	if err != nil {
-		log.Fatal("unable to install server assembly")
+		logFatal("unable to install server assembly")
 	}
 
-	log.Info("Launching Stick Fight...")
-	//sf := exec.Command("steam://674940", "-address", ip)
+	logInfo("Launching Stick Fight...")
 	sf := exec.Command("rundll32", "url.dll,FileProtocolHandler", fmt.Sprintf("steam://rungameid/674940 -address %s", ip))
 	if isSteam {
 		sf = exec.Command(sfExe, "-address", ip)
@@ -113,7 +109,7 @@ func main() {
 	
 	err = sf.Run()
 	if err != nil {
-		log.Fatal("Process ended with code: ", err)
+		logFatal("Process ended with code: ", err)
 	}
 
 	pid := -1
@@ -124,25 +120,28 @@ func main() {
 			break
 		}
 		if time.Since(pidTime).Seconds() > 5 {
-			log.Fatal("Unable to find PID by name: ", err)
+			logFatal("Unable to find PID by name: ", err)
 		}
 	}
 
 	proc, err := os.FindProcess(pid)
 	if err != nil {
-		log.Fatal("Unable to find process by PID: ", err)
+		logFatal("Unable to find process by PID: ", err)
 	}
 
-	log.Info("Waiting for game to exit...")
+	logInfo("Waiting for game to exit...")
 	_, err = proc.Wait()
 	if err != nil {
-		log.Fatal("Game ended with code: ", err)
+		logFatal("Game ended with code: ", err)
 	}
 }
 
 func Restore(backupDLL, installDLL string) {
-	log.Info("Restoring Stick Fight assembly...")
+	logInfo("Restoring Stick Fight assembly...")
 	os.Rename(backupDLL, installDLL)
+
+	logInfo("Thank you for playing!")
+	time.Sleep(time.Second * 3)
 }
 
 func FindInstall(path string) bool {
