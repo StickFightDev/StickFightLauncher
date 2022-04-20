@@ -30,7 +30,7 @@ var (
 )
 
 func init() {
-	flag.IntVar(&verbosityLevel, "verbosity", verbosityLevel, "The verbosity level of debug log output")
+	flag.IntVar(&verbosityLevel, "verbosity", verbosityLevel, "The verbosity level of debug log output (0=none, 1=debug, 2=trace)")
 	flag.StringVar(&ip, "ip", ip, "The IP to connect to")
 	flag.IntVar(&port, "port", port, "The port to connect to")
 	flag.StringVar(&dll, "dll", dll, "The URL of the DLL to use")
