@@ -21,6 +21,7 @@ var (
 	dll = "https://raw.githubusercontent.com/StickFightDev/StickFightLauncher/dev/mod/Assembly-CSharp.srv.dll"
 	dllSha256 = "https://raw.githubusercontent.com/StickFightDev/StickFightLauncher/dev/mod/SHA256"
 	modDll = "Assembly-CSharp.srv.dll"
+	noUpdate = false
 	isSteam = false
 	sfExe = ""
 
@@ -33,10 +34,11 @@ func init() {
 	flag.IntVar(&verbosityLevel, "verbosity", verbosityLevel, "The verbosity level of debug log output (0=none, 1=debug, 2=trace)")
 	flag.StringVar(&ip, "ip", ip, "The IP to connect to")
 	flag.IntVar(&port, "port", port, "The port to connect to")
-	flag.StringVar(&dll, "dll", dll, "The URL of the DLL to use")
-	flag.StringVar(&dllSha256, "sha256", dllSha256, "The SHA256 of the DLL to compare against")
+	flag.StringVar(&dll, "dll", dll, "The URL of the DLL to cache and install")
+	flag.StringVar(&dllSha256, "sha256", dllSha256, "The SHA256 URL for comparing the DLL")
 	flag.StringVar(&modDll, "modDll", modDll, "The filename to give the cached assembly")
-	flag.BoolVar(&isSteam, "steam", isSteam, "Set to true if launched from Steam non-game shortcut")
+	flag.BoolVar(&noUpdate, "noUpdate", noUpdate, "Set to only install the cached DLL, effectively offline mode")
+	flag.BoolVar(&isSteam, "steam", isSteam, "Set if launched from Steam non-game shortcut")
 	flag.StringVar(&sfExe, "sfExe", sfExe, "The relative or exact path to StickFight.exe")
 	flag.Parse()
 }
@@ -76,19 +78,27 @@ func main() {
 	defer Restore(backupDLL, installDLL)
 
 	serverDLL := managedPath + modDll
-	dllSHA256 := SHA256(serverDLL)
-	gitSHA256 := string(HTTPGET(dllSha256))
 
-	if !PathExists(serverDLL) || dllSHA256 != gitSHA256 {
-		logInfo("Stick Fight assembly (%s) is outdated, updating to (%s)...", dllSHA256, gitSHA256)
-		downloadDLL := HTTPGET(dll)
-		if len(downloadDLL) == 0 {
-			logFatal("unable to download server assembly")
+	if noUpdate {
+		if !PathExists(serverDLL) {
+			logFatal("unable to find server assembly")
 		}
+	} else {
+		logInfo("Checking for updates...")
+		dllSHA256 := SHA256(serverDLL)
+		gitSHA256 := string(HTTPGET(dllSha256))
 
-		err := os.WriteFile(serverDLL, downloadDLL, 0777)
-		if err != nil {
-			logFatal("unable to write server assembly")
+		if dllSHA256 != gitSHA256 {
+			logInfo("Stick Fight assembly (%s) is outdated, updating to (%s)...", dllSHA256, gitSHA256)
+			downloadDLL := HTTPGET(dll)
+			if len(downloadDLL) == 0 {
+				logFatal("unable to download server assembly")
+			}
+
+			err := os.WriteFile(serverDLL, downloadDLL, 0777)
+			if err != nil {
+				logFatal("unable to write server assembly")
+			}
 		}
 	}
 
@@ -109,7 +119,7 @@ func main() {
 	
 	err = sf.Run()
 	if err != nil {
-		logFatal("Process ended with code: ", err)
+		logFatal("Process ended with code: %v", err)
 	}
 
 	pid := -1
@@ -120,19 +130,19 @@ func main() {
 			break
 		}
 		if time.Since(pidTime).Seconds() > 5 {
-			logFatal("Unable to find PID by name: ", err)
+			logFatal("Unable to find PID by name: %v", err)
 		}
 	}
 
 	proc, err := os.FindProcess(pid)
 	if err != nil {
-		logFatal("Unable to find process by PID: ", err)
+		logFatal("Unable to find process by PID: %v", err)
 	}
 
 	logInfo("Waiting for game to exit...")
 	_, err = proc.Wait()
 	if err != nil {
-		logFatal("Game ended with code: ", err)
+		logFatal("Game ended with code: %v", err)
 	}
 }
 
