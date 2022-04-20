@@ -191,13 +191,13 @@ func CopyFile(src, dst string) (int64, error) {
 func SHA256(fileName string) string {
 	f, err := os.Open(fileName)
 	if err != nil {
-		panic(err)
+		return fmt.Sprintf("%x", fileName)
 	}
 	defer f.Close()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		panic(err)
+		return fmt.Sprintf("%x", fileName)
 	}
 
 	return fmt.Sprintf("%x", h.Sum(nil))
