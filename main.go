@@ -50,10 +50,30 @@ func main() {
 	logWarning("!!! YOU HAVE BEEN WARNED !!!")
 	logBlank()
 
-	logInfo("Searching for Stick Fight...")
+	steam, err := NewSteam()
+	if err != nil {
+		logFatal("%v", err)
+	}
+
+	libraryFolders, err := steam.GetLibraryFolders()
+	if err != nil {
+		logFatal("%v", err)
+	}
+	logDebug("Library folders: %v", libraryFolders)
+
+	logDebug("Searching for Stick Fight...")
 	if !FindInstall(sfExe) {
 		if !FindInstall("StickFight.exe") {
-			if !FindInstall("C:\\Program Files (x86)\\Steam\\steamapps\\common\\StickFightTheGame\\StickFight.exe") {
+			found := false
+			for _, libraryFolder := range libraryFolders {
+				libraryPath := fmt.Sprintf("%s\\steamapps\\common\\StickFightTheGame\\StickFight.exe", libraryFolder)
+				logDebug("Testing path: %s", libraryPath)
+				if FindInstall(libraryPath) {
+					found = true
+					break
+				}
+			}
+			if !found {
 				logFatal("unable to find Stick Fight")
 			}
 		}
@@ -63,14 +83,21 @@ func main() {
 	installPath := filepath.Dir(sfExe)
 	managedPath := installPath + "\\StickFight_Data\\Managed\\"
 
+	/*shortcuts, err := steam.GetShortcuts()
+	if err != nil {
+		logFatal("%v", err)
+	}
+	logInfo("%v", shortcuts)
+	panic("ABORT")*/
+
 	installDLL := managedPath + "Assembly-CSharp.dll"
 	if !PathExists(installDLL) {
 		logFatal("unable to find Stick Fight assembly")
 	}
 	installSHA256 := SHA256(installDLL)
-	logInfo("Found Stick Fight assembly: %s (%s)", installDLL, installSHA256)
+	logDebug("Found Stick Fight assembly: %s (%s)", installDLL, installSHA256)
 
-	logInfo("Backing up Stick Fight assembly...")
+	logDebug("Backing up Stick Fight assembly...")
 	backupDLL := managedPath + "Assembly-CSharp.old.dll"
 	os.Rename(installDLL, backupDLL)
 
@@ -78,6 +105,7 @@ func main() {
 	defer Restore(backupDLL, installDLL)
 
 	serverDLL := managedPath + modDll
+	dllSHA256 := SHA256(serverDLL)
 
 	if noUpdate {
 		if !PathExists(serverDLL) {
@@ -85,11 +113,10 @@ func main() {
 		}
 	} else {
 		logInfo("Checking for updates...")
-		dllSHA256 := SHA256(serverDLL)
 		gitSHA256 := string(HTTPGET(dllSha256))
 
 		if dllSHA256 != gitSHA256 {
-			logInfo("Stick Fight assembly (%s) is outdated, updating to (%s)...", dllSHA256, gitSHA256)
+			logDebug("Stick Fight assembly (%s) is outdated, updating to (%s)...", dllSHA256, gitSHA256)
 			downloadDLL := HTTPGET(dll)
 			if len(downloadDLL) == 0 {
 				logFatal("unable to download server assembly")
@@ -102,8 +129,8 @@ func main() {
 		}
 	}
 
-	logInfo("Installing server assembly...")
-	_, err := CopyFile(serverDLL, installDLL)
+	logInfo("Installing server assembly (%s)...", dllSHA256)
+	_, err = CopyFile(serverDLL, installDLL)
 	if err != nil {
 		logFatal("unable to install server assembly")
 	}
@@ -147,7 +174,7 @@ func main() {
 }
 
 func Restore(backupDLL, installDLL string) {
-	logInfo("Restoring Stick Fight assembly...")
+	logDebug("Restoring Stick Fight assembly...")
 	os.Rename(backupDLL, installDLL)
 
 	logInfo("Thank you for playing!")

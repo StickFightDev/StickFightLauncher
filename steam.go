@@ -1,0 +1,118 @@
+package main
+
+import (
+	"fmt"
+	"io/ioutil"
+	"os"
+	"regexp"
+	"strings"
+	"unicode"
+
+	"github.com/stephen-fox/steamutil/locations"
+	"github.com/stephen-fox/steamutil/shortcuts"
+	//"github.com/stephen-fox/steamutil/vdf"
+)
+
+//Steam holds a Steam instance
+type Steam struct {
+	DV       locations.DataVerifier //Transport for getting/verifying data related file and directory locations
+	SteamIDs []string               //SteamIDs of previously logged in users
+}
+
+//NewSteam verifies a valid Steam instance with at least one user account and returns an instance of it
+func NewSteam() (*Steam, error) {
+	if !locations.IsInstalled() {
+		return nil, fmt.Errorf("steam: not installed")
+	}
+
+	dv, err := locations.NewDataVerifier()
+	if err != nil {
+		return nil, err
+	}
+
+	userIdsToDirs, err := dv.UserIdsToDataDirPaths()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(userIdsToDirs) == 0 {
+		return nil, fmt.Errorf("steam: no users found")
+	}
+
+	steamIds := make([]string, 0)
+	for steamId := range userIdsToDirs {
+		skip := false
+		for _, r := range steamId {
+			if !unicode.IsDigit(r) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			steamIds = append(steamIds, steamId)
+		}
+	}
+
+	return &Steam{DV: dv, SteamIDs: steamIds}, nil
+}
+
+func (s *Steam) GetLibraryFolders() ([]string, error) {
+	libraryVdf := fmt.Sprintf("%s\\steamapps\\libraryfolders.vdf", s.DV.RootDirPath())
+
+	libraryRaw, err := ioutil.ReadFile(libraryVdf)
+	if err != nil {
+		return nil, err
+	}
+	libraryString := string(libraryRaw)
+
+	pathRegex := regexp.MustCompile(`(?:)"path"\t\t"(.*)"(?:)`)
+	pathMatches := pathRegex.FindAllStringSubmatch(libraryString, -1)
+
+	libraryFolders := make([]string, 0)
+	for _, pathMatch := range pathMatches {
+		libraryFolders = append(libraryFolders, strings.ReplaceAll(pathMatch[1], `\\`, `\`))
+	}
+
+	return libraryFolders, nil
+}
+
+func (s *Steam) GetShortcutPath() (string, error) {
+	shortcutPath, _, err := s.DV.ShortcutsFilePath(s.SteamIDs[0])
+	if err != nil {
+		return shortcutPath, err
+	}
+	if shortcutPath == "" {
+		return shortcutPath, fmt.Errorf("steam: GetShortcuts: could not find shortcut path")
+	}
+	return shortcutPath, nil
+}
+
+func (s *Steam) GetShortcuts() ([]shortcuts.Shortcut, error) {
+	shortcutPath, err := s.GetShortcutPath()
+	if err != nil {
+		return nil, err
+	}
+
+	shortcutFile, err := os.Open(shortcutPath)
+	if err != nil {
+		return nil, err
+	}
+	defer shortcutFile.Close()
+
+	return shortcuts.ReadFile(shortcutFile)
+}
+
+func (s *Steam) SaveShortcuts(shortcutList []shortcuts.Shortcut) error {
+	shortcutPath, err := s.GetShortcutPath()
+	if err != nil {
+		return err
+	}
+
+	shortcutFile, err := os.Open(shortcutPath)
+	if err != nil {
+		return err
+	}
+	defer shortcutFile.Close()
+
+	return shortcuts.OverwriteVdfV1File(shortcutFile, shortcutList)
+}
