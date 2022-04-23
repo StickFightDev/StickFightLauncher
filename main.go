@@ -74,25 +74,54 @@ func main() {
 				}
 			}
 			if !found {
-				logFatal("unable to find Stick Fight")
+				logFatal("%v", "unable to find Stick Fight")
 			}
 		}
 	}
 	logInfo("Found Stick Fight: %s", sfExe)
 
-	installPath := filepath.Dir(sfExe)
-	managedPath := installPath + "\\StickFight_Data\\Managed\\"
+	installPath := filepath.Dir(sfExe) + "\\"
+	managedPath := installPath + "StickFight_Data\\Managed\\"
 
-	/*shortcuts, err := steam.GetShortcuts()
-	if err != nil {
-		logFatal("%v", err)
+	if !isSteam {
+		logDebug("Getting Steam shortcuts...")
+		shortcuts, err := steam.GetShortcuts()
+		if err != nil {
+			logFatal("%v", err)
+		}
+
+		createShortcut := true
+		for _, shortcut := range shortcuts {
+			if shortcut.AppName == "Stick Fight: Dedicated Server" {
+				logDebug("Shortcut already exists!")
+				createShortcut = false
+				break
+			}
+		}
+		
+		if createShortcut {
+			logInfo("Injecting Steam shortcut for Stick Fight: Dedicated Server...")
+			launcherArgs := fmt.Sprintf("-steam -verbosity %d", verbosityLevel)
+			shortcut := steam.CreateShortcut(len(shortcuts), "Stick Fight: Dedicated Server", installPath + "StickFightLauncher.exe", installPath, "F:\\Games\\SteamLibrary\\steamapps\\common\\StickFightTheGame\\StickFight.exe", launcherArgs, "favorite")
+			shortcuts = append(shortcuts, shortcut)
+
+			logDebug("Saving Steam shortcuts...")
+			err = steam.SaveShortcuts(shortcuts)
+			if err != nil {
+				logFatal("%v", err)
+			}
+		}
+
+		logInfo("Migrating launcher into game directory...")
+		err = os.Rename(os.Args[0], installPath + "StickFightLauncher.exe")
+		if err != nil {
+			logFatal("%v", err)
+		}
 	}
-	logInfo("%v", shortcuts)
-	panic("ABORT")*/
 
 	installDLL := managedPath + "Assembly-CSharp.dll"
 	if !PathExists(installDLL) {
-		logFatal("unable to find Stick Fight assembly")
+		logFatal("%v", "unable to find Stick Fight assembly")
 	}
 	installSHA256 := SHA256(installDLL)
 	logDebug("Found Stick Fight assembly: %s (%s)", installDLL, installSHA256)
@@ -109,7 +138,7 @@ func main() {
 
 	if noUpdate {
 		if !PathExists(serverDLL) {
-			logFatal("unable to find server assembly")
+			logFatal("%v", "unable to find server assembly")
 		}
 	} else {
 		logInfo("Checking for updates...")
@@ -119,12 +148,12 @@ func main() {
 			logDebug("Stick Fight assembly (%s) is outdated, updating to (%s)...", dllSHA256, gitSHA256)
 			downloadDLL := HTTPGET(dll)
 			if len(downloadDLL) == 0 {
-				logFatal("unable to download server assembly")
+				logFatal("%v", "unable to download server assembly")
 			}
 
 			err := os.WriteFile(serverDLL, downloadDLL, 0777)
 			if err != nil {
-				logFatal("unable to write server assembly")
+				logFatal("%v", "unable to write server assembly")
 			}
 		}
 	}
@@ -132,7 +161,7 @@ func main() {
 	logInfo("Installing server assembly (%s)...", dllSHA256)
 	_, err = CopyFile(serverDLL, installDLL)
 	if err != nil {
-		logFatal("unable to install server assembly")
+		logFatal("%v", "unable to install server assembly")
 	}
 
 	logInfo("Launching Stick Fight...")
@@ -174,7 +203,7 @@ func main() {
 }
 
 func Restore(backupDLL, installDLL string) {
-	logDebug("Restoring Stick Fight assembly...")
+	logInfo("Restoring Stick Fight assembly...")
 	os.Rename(backupDLL, installDLL)
 
 	logInfo("Thank you for playing!")

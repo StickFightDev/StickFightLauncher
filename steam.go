@@ -102,17 +102,32 @@ func (s *Steam) GetShortcuts() ([]shortcuts.Shortcut, error) {
 	return shortcuts.ReadFile(shortcutFile)
 }
 
+func (s *Steam) CreateShortcut(id int, appName, exePath, startDir, iconPath, launchOptions string, tags ...string) shortcuts.Shortcut {
+	return shortcuts.Shortcut{
+		Id: id,
+		AppName: appName,
+		ExePath: exePath,
+		StartDir: startDir,
+		IconPath: iconPath,
+		LaunchOptions: launchOptions,
+		Tags: tags,
+	}
+}
+
 func (s *Steam) SaveShortcuts(shortcutList []shortcuts.Shortcut) error {
 	shortcutPath, err := s.GetShortcutPath()
 	if err != nil {
-		return err
+		return fmt.Errorf("Steam: SaveShortcuts(1): %v", err)
 	}
 
-	shortcutFile, err := os.Open(shortcutPath)
+	shortcutFile, err := os.OpenFile(shortcutPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
-		return err
+		return fmt.Errorf("Steam: SaveShortcuts(2): %v", err)
 	}
 	defer shortcutFile.Close()
 
-	return shortcuts.OverwriteVdfV1File(shortcutFile, shortcutList)
+	if err := shortcuts.OverwriteVdfV1File(shortcutFile, shortcutList); err != nil {
+		return fmt.Errorf("Steam: SaveShortcuts(3): %v", err)
+	}
+	return nil
 }
