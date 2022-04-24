@@ -215,8 +215,6 @@ func main() {
 				os.Exit(0)
 			}
 		}
-
-		logFatal("%v", releases[0])
 	}
 
 	installDLL := managedPath + "Assembly-CSharp.dll"
