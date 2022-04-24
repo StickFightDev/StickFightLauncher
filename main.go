@@ -18,6 +18,7 @@ import (
 
 var (
 	//Command-line flags and their defaults
+	version = false
 	verbosityLevel = 0
 	ip = "72.9.147.58"
 	port = 1337
@@ -36,6 +37,7 @@ var (
 )
 
 func init() {
+	flag.BoolVar(&version, "version", version, "Set to display version info and exit with no operation")
 	flag.IntVar(&verbosityLevel, "verbosity", verbosityLevel, "The verbosity level of debug log output (0=none, 1=debug, 2=trace)")
 	flag.StringVar(&ip, "ip", ip, "The IP to connect to")
 	flag.IntVar(&port, "port", port, "The port to connect to")
@@ -51,8 +53,12 @@ func init() {
 }
 
 func main() {
-	logInfo("Stick Fight Launcher © JoshuaDoes 2022.")
-	logInfo("Build ID: " + BuildID)
+	logPrefix("VERSION", "Stick Fight Launcher © JoshuaDoes 2022.")
+	logPrefix("VERSION", "Build ID: " + BuildID)
+	if version {
+		return
+	}
+
 	logBlank()
 	logWarning("!!! DON'T CLOSE ME !!!")
 	logWarning("!! I am going to restore your game back to normal once you're finished playing !!")
