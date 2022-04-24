@@ -10,7 +10,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
+
+	"github.com/JoshuaDoes/json"
 )
 
 var (
@@ -22,6 +25,8 @@ var (
 	dllSha256 = "https://raw.githubusercontent.com/StickFightDev/StickFightLauncher/dev/mod/SHA256"
 	modDll = "Assembly-CSharp.srv.dll"
 	noUpdate = false
+	noLauncherUpdate = false
+	updated = false
 	isSteam = false
 	sfExe = ""
 
@@ -38,12 +43,17 @@ func init() {
 	flag.StringVar(&dllSha256, "sha256", dllSha256, "The SHA256 URL for comparing the DLL")
 	flag.StringVar(&modDll, "modDll", modDll, "The filename to give the cached assembly")
 	flag.BoolVar(&noUpdate, "noUpdate", noUpdate, "Set to only install the cached DLL, effectively offline mode")
+	flag.BoolVar(&noLauncherUpdate, "noLauncherUpdate", noLauncherUpdate, "Set to disable automatic launcher updates")
+	flag.BoolVar(&updated, "updated", updated, "Set to delete " + os.Args[0] + ".oudated.exe")
 	flag.BoolVar(&isSteam, "steam", isSteam, "Set if launched from Steam non-game shortcut")
 	flag.StringVar(&sfExe, "sfExe", sfExe, "The relative or exact path to StickFight.exe")
 	flag.Parse()
 }
 
 func main() {
+	logInfo("Stick Fight Launcher © JoshuaDoes 2022.")
+	logInfo("Build ID: " + BuildID)
+	logBlank()
 	logWarning("!!! DON'T CLOSE ME !!!")
 	logWarning("!! I am going to restore your game back to normal once you're finished playing !!")
 	logWarning("! If you close me before the game, you'll need to re-validate or re-install it !")
@@ -102,7 +112,13 @@ func main() {
 		if createShortcut {
 			logInfo("Injecting Steam shortcut for Stick Fight: Dedicated Server...")
 			launcherArgs := fmt.Sprintf("-steam -verbosity %d", verbosityLevel)
-			shortcut := steam.CreateShortcut(len(shortcuts), "Stick Fight: Dedicated Server", installPath + "StickFightLauncher.exe", installPath, "F:\\Games\\SteamLibrary\\steamapps\\common\\StickFightTheGame\\StickFight.exe", launcherArgs, "favorite")
+			shortcut := steam.CreateShortcut(len(shortcuts),
+				"Stick Fight: Dedicated Server",
+				installPath + "StickFightLauncher.exe",
+				installPath, "F:\\Games\\SteamLibrary\\steamapps\\common\\StickFightTheGame\\StickFight.exe",
+				launcherArgs,
+				"favorite",
+			)
 			shortcuts = append(shortcuts, shortcut)
 
 			logDebug("Saving Steam shortcuts...")
@@ -117,6 +133,78 @@ func main() {
 		if err != nil {
 			logFatal("%v", err)
 		}
+		os.Args[0] = installPath + "StickFightLauncher.exe" //Correct the os.Args slice for future use
+	}
+
+	//Production updates are built with a go wrapper called govvv, but we don't want to lose our work in a dev environment so disable launcher updates
+	if BuildID == "sflaunch-" + runtime.Version() {
+		logPrefix("DEV", "Disabling automatic launcher updates...")
+		noLauncherUpdate = true
+	}
+
+	if noLauncherUpdate {
+		logDebug("Skipping automatic launcher updates...")
+	} else {
+		logInfo("Checking for launcher updates...")
+		releasesJSON := HTTPGET("https://api.github.com/repos/StickFightDev/StickFightLauncher/releases")
+
+		releases := make([]*GitHubRelease, 0)
+		err = json.Unmarshal(releasesJSON, &releases)
+		if err != nil {
+			logFatal("%v", err)
+		}
+
+		latest := releases[0]
+		if latest.TagName != GitCommit {
+			logInfo("Stick Fight Launcher (%s) is outdated, updating to (%s)...", GitCommit, latest.TagName)
+
+			var assetExe *GitHubAsset
+			for _, asset := range latest.Assets {
+				if asset.ContentType == "application/x-msdownload" {
+					assetExe = asset
+					break
+				}
+			}
+
+			if assetExe == nil {
+				logError("unable to find valid application/x-msdownload asset")
+			} else {
+				downloadLauncher := HTTPGET(assetExe.BrowserDownloadURL)
+
+				logDebug("Migrating outdated launcher...")
+				err = os.Rename(os.Args[0], os.Args[0] + ".outdated.exe")
+				if err != nil {
+					logFatal("%v", err)
+				}
+
+				logDebug("Writing new launcher...")
+				err = os.WriteFile(os.Args[0], downloadLauncher, 0777)
+				if err != nil {
+					logFatal("unable to write launcher: %v", err)
+				}
+
+				logDebug("Launching new launcher...")
+				newArgs := make([]string, 0)
+				if len(os.Args) > 1 {
+					newArgs = os.Args[1:]
+				}
+				newArgs = append(newArgs, "-updated")
+
+				launcher := exec.Command(os.Args[0], newArgs...)
+				launcher.Stdout = os.Stdout
+				launcher.Stderr = os.Stderr
+				launcher.Stdin = os.Stdin
+
+				err = launcher.Run()
+				if err != nil {
+					logFatal("Process ended with code: %v", err)
+				}
+
+				os.Exit(0)
+			}
+		}
+
+		logFatal("%v", releases[0])
 	}
 
 	installDLL := managedPath + "Assembly-CSharp.dll"
@@ -138,10 +226,10 @@ func main() {
 
 	if noUpdate {
 		if !PathExists(serverDLL) {
-			logFatal("%v", "unable to find server assembly")
+			logFatal("unable to find server assembly at path: %s", serverDLL)
 		}
 	} else {
-		logInfo("Checking for updates...")
+		logInfo("Checking for assembly updates...")
 		gitSHA256 := string(HTTPGET(dllSha256))
 
 		if dllSHA256 != gitSHA256 {
@@ -153,7 +241,7 @@ func main() {
 
 			err := os.WriteFile(serverDLL, downloadDLL, 0777)
 			if err != nil {
-				logFatal("%v", "unable to write server assembly")
+				logFatal("unable to write server assembly: %v", err)
 			}
 		}
 	}
@@ -178,6 +266,7 @@ func main() {
 		logFatal("Process ended with code: %v", err)
 	}
 
+	logDebug("Scanning for StickFight.exe with a 15 second timeout...")
 	pid := -1
 	pidTime := time.Now()
 	for {
@@ -185,7 +274,7 @@ func main() {
 		if err == nil {
 			break
 		}
-		if time.Since(pidTime).Seconds() > 5 {
+		if time.Since(pidTime).Seconds() > 15 {
 			logFatal("Unable to find PID by name: %v", err)
 		}
 	}
@@ -195,7 +284,7 @@ func main() {
 		logFatal("Unable to find process by PID: %v", err)
 	}
 
-	logInfo("Waiting for game to exit...")
+	logInfo("Waiting for Stick Fight to exit...")
 	_, err = proc.Wait()
 	if err != nil {
 		logFatal("Game ended with code: %v", err)

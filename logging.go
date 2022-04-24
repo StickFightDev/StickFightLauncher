@@ -10,6 +10,9 @@ func logInfo(msg ...interface{}) {
 func logWarning(msg ...interface{}) {
 	logPrefix("WARN", msg...)
 }
+func logError(msg ...interface{}) {
+	logPrefix("ERROR", msg...)
+}
 func logFatal(msg ...interface{}) {
 	logPrefix("FATAL", msg...)
 	panic("FATAL")
