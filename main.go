@@ -53,6 +53,12 @@ func init() {
 }
 
 func main() {
+	if updated {
+		err := os.Remove(os.Args[0] + ".outdated.exe")
+		if err != nil {
+			logError("unable to remove outdated launcher: %v", err)
+		}
+	}
 	logPrefix("VERSION", "Stick Fight Launcher © JoshuaDoes 2022.")
 	logPrefix("VERSION", "Build ID: " + BuildID)
 	if version {
