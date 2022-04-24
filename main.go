@@ -263,10 +263,8 @@ func main() {
 	}
 
 	logInfo("Launching Stick Fight...")
+	pidTime := time.Now()
 	sf := exec.Command("rundll32", "url.dll,FileProtocolHandler", fmt.Sprintf("steam://rungameid/674940 -address %s", ip))
-	if isSteam {
-		sf = exec.Command(sfExe, "-address", ip)
-	}
 	sf.Stdout = os.Stdout
 	sf.Stderr = os.Stderr
 	sf.Stdin = os.Stdin
@@ -278,7 +276,6 @@ func main() {
 
 	logDebug("Scanning for StickFight.exe with a 15 second timeout...")
 	pid := -1
-	pidTime := time.Now()
 	for {
 		pid, err = processID("StickFight.exe")
 		if err == nil {
