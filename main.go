@@ -17,6 +17,8 @@ import (
 )
 
 var (
+	dev = false
+
 	//Command-line flags and their defaults
 	version = false
 	verbosityLevel = 0
@@ -59,6 +61,16 @@ func main() {
 			logError("unable to remove outdated launcher: %v", err)
 		}
 	}
+
+	//Production updates are built with a go wrapper called govvv, but we don't want to lose our work in a dev environment
+	if BuildID == "sflaunch-" + runtime.Version() {
+		logPrefix("DEV", "Enabling developer mode...")
+		dev = true
+
+		logPrefix("DEV", "Disabling automatic launcher updates...")
+		noLauncherUpdate = true
+	}
+
 	logPrefix("VERSION", "Stick Fight Launcher © JoshuaDoes 2022.")
 	logPrefix("VERSION", "Build ID: " + BuildID)
 	if version {
@@ -112,9 +124,16 @@ func main() {
 			logFatal("%v", err)
 		}
 
+		appName := "Stick Fight: Dedicated Server"
+		appPath := installPath + "StickFightLauncher.exe"
+		if dev {
+			appName = "Stick Fight: Dev Launcher"
+			appPath = os.Args[0]
+		}
+
 		createShortcut := true
 		for _, shortcut := range shortcuts {
-			if shortcut.AppName == "Stick Fight: Dedicated Server" {
+			if shortcut.AppName == appName {
 				logDebug("Shortcut already exists!")
 				createShortcut = false
 				break
@@ -122,14 +141,15 @@ func main() {
 		}
 		
 		if createShortcut {
-			logInfo("Injecting Steam shortcut for Stick Fight: Dedicated Server...")
+			logInfo("Injecting Steam shortcut for %s...", appName)
 			launcherArgs := fmt.Sprintf("-steam -verbosity %d", verbosityLevel)
 			shortcut := steam.CreateShortcut(len(shortcuts),
-				"Stick Fight: Dedicated Server",
-				installPath + "StickFightLauncher.exe",
-				installPath, "F:\\Games\\SteamLibrary\\steamapps\\common\\StickFightTheGame\\StickFight.exe",
-				launcherArgs,
-				"favorite",
+				appName, //Use either production or dev mode naming for the shortcut
+				appPath, //Use the correct path to the launcher
+				installPath, //Set working directory to game directory
+				sfExe, //Use Stick Fight's current icon
+				launcherArgs, //Pass good enough starter args
+				"favorite", "favorites", //Try to tag to favorites list
 			)
 			shortcuts = append(shortcuts, shortcut)
 
@@ -140,24 +160,20 @@ func main() {
 			}
 		}
 
-		logInfo("Migrating launcher into game directory...")
-		err = os.Rename(os.Args[0], installPath + "StickFightLauncher.exe")
-		if err != nil {
-			logError("unable to migrate launcher: %v", err)
-
-			logDebug("Failed to migrate launcher, copying instead...")
-			_, err = CopyFile(os.Args[0], installPath + "StickFightLauncher.exe")
+		if !dev {
+			logInfo("Migrating launcher into game directory...")
+			err = os.Rename(os.Args[0], installPath + "StickFightLauncher.exe")
 			if err != nil {
-				logFatal("unable to copy launcher: %v", err)
-			}
-		}
-		os.Args[0] = installPath + "StickFightLauncher.exe" //Correct the os.Args slice for future use
-	}
+				logError("unable to migrate launcher: %v", err)
 
-	//Production updates are built with a go wrapper called govvv, but we don't want to lose our work in a dev environment so disable launcher updates
-	if BuildID == "sflaunch-" + runtime.Version() {
-		logPrefix("DEV", "Disabling automatic launcher updates...")
-		noLauncherUpdate = true
+				logDebug("Failed to migrate launcher, copying instead...")
+				_, err = CopyFile(os.Args[0], installPath + "StickFightLauncher.exe")
+				if err != nil {
+					logFatal("unable to copy launcher: %v", err)
+				}
+			}
+			os.Args[0] = installPath + "StickFightLauncher.exe" //Correct the os.Args slice for future use
+		}
 	}
 
 	if noLauncherUpdate {
