@@ -21,6 +21,7 @@ func init() {
 }
 
 type GitHubRelease struct {
+	ID int64 `json:"id"`
 	Author GitHubAuthor `json:"author"`
 	Name string `json:"name"`
 	TagName string `json:"tag_name"`

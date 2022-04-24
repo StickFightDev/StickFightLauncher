@@ -172,8 +172,22 @@ func main() {
 			logFatal("%v", err)
 		}
 
-		latest := releases[0]
-		if latest.TagName != GitCommit {
+		//Release IDs appear to be incremental, filter out the latest release
+		var latest *GitHubRelease
+		for _, release := range releases {
+			if latest == nil {
+				latest = release
+				continue
+			}
+
+			if release.ID > latest.ID {
+				latest = release
+			}
+		}
+
+		if latest == nil {
+			logError("unable to find any launcher releases")
+		} else if latest.TagName != GitCommit {
 			logInfo("Stick Fight Launcher (%s) is outdated, updating to (%s)...", GitCommit, latest.TagName)
 
 			var assetExe *GitHubAsset
