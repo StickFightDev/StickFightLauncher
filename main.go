@@ -143,7 +143,13 @@ func main() {
 		logInfo("Migrating launcher into game directory...")
 		err = os.Rename(os.Args[0], installPath + "StickFightLauncher.exe")
 		if err != nil {
-			logFatal("%v", err)
+			logError("unable to migrate launcher: %v", err)
+
+			logDebug("Failed to migrate launcher, copying instead...")
+			_, err = CopyFile(os.Args[0], installPath + "StickFightLauncher.exe")
+			if err != nil {
+				logFatal("unable to copy launcher: %v", err)
+			}
 		}
 		os.Args[0] = installPath + "StickFightLauncher.exe" //Correct the os.Args slice for future use
 	}
