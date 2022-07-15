@@ -16,6 +16,15 @@ import (
 	"github.com/JoshuaDoes/json"
 )
 
+//Status holds server statistics
+type Status struct {
+        Address string `json:"address"`
+        Online bool `json:"online"`
+        Lobbies int `json:"lobbies"`
+        MaxLobbies int `json:"maxLobbies"`
+        Players int `json:"playersOnline"`
+}
+
 var (
 	dev = false
 
@@ -36,6 +45,8 @@ var (
 	installDLLs = []string{
 		"6058775b1416c1bf80bf3bc5cdd72ddbd55ae5482c087b884d02264dc6b0fbd1", //v25
 	}
+
+	serverStatus *Status
 )
 
 func init() {
@@ -76,6 +87,28 @@ func main() {
 	if version {
 		return
 	}
+
+	logBlank()
+	logInfo("Checking server status...")
+	statusHttp, err := http.Get(fmt.Sprintf("http://%s:%d/status", ip, port))
+	if err != nil {
+		logError("%v", err)
+		logFatal("Server cannot be reached!")
+	}
+	statusJSON, err := ioutil.ReadAll(statusHttp.Body)
+	if err != nil {
+		logFatal("%v", err)
+	}
+	err = json.Unmarshal(statusJSON, &serverStatus)
+	if err != nil {
+		logFatal("%v", err)
+	}
+
+	logInfo("Server online: %v", serverStatus.Online)
+	if !serverStatus.Online {
+		logFatal("Server is offline!")
+	}
+	logInfo("Players: %d in %d/%d lobbies", serverStatus.Players, serverStatus.Lobbies, serverStatus.MaxLobbies)
 
 	logBlank()
 	logWarning("!!! DON'T CLOSE ME !!!")
@@ -255,7 +288,7 @@ func main() {
 
 	installDLL := managedPath + "Assembly-CSharp.dll"
 	if !PathExists(installDLL) {
-		logFatal("%v", "unable to find Stick Fight assembly")
+		logFatal("unable to find Stick Fight assembly here: %s", installDLL)
 	}
 	installSHA256 := SHA256(installDLL)
 	logDebug("Found Stick Fight assembly: %s (%s)", installDLL, installSHA256)

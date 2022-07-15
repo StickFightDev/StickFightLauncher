@@ -1,5 +1,8 @@
 package main
 
+//NOTE: All launcher releases are built with the following command:
+//  govvv build -ldflags="-s -w"
+
 import (
 	"fmt"
 	"runtime"
