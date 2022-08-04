@@ -57,7 +57,7 @@ func NewSteam() (*Steam, error) {
 }
 
 func (s *Steam) GetLibraryFolders() ([]string, error) {
-	libraryVdf := fmt.Sprintf("%s\\steamapps\\libraryfolders.vdf", s.DV.RootDirPath())
+	libraryVdf := fmt.Sprintf("%s/steamapps/libraryfolders.vdf", s.DV.RootDirPath())
 
 	libraryRaw, err := ioutil.ReadFile(libraryVdf)
 	if err != nil {
@@ -70,21 +70,30 @@ func (s *Steam) GetLibraryFolders() ([]string, error) {
 
 	libraryFolders := make([]string, 0)
 	for _, pathMatch := range pathMatches {
-		libraryFolders = append(libraryFolders, strings.ReplaceAll(pathMatch[1], `\\`, `\`))
+		libraryFolders = append(libraryFolders, strings.ReplaceAll(pathMatch[1], `\\`, `/`))
 	}
 
 	return libraryFolders, nil
 }
 
+//for now, only support one user
 func (s *Steam) GetShortcutPath() (string, error) {
-	shortcutPath, _, err := s.DV.ShortcutsFilePath(s.SteamIDs[0])
+    //userPath, _, err := s.DV.UserDataDirPath()
+    userPaths, err := s.DV.UserIdsToDataDirPaths()
 	if err != nil {
-		return shortcutPath, err
+		return "", err
 	}
-	if shortcutPath == "" {
-		return shortcutPath, fmt.Errorf("steam: GetShortcuts: could not find shortcut path")
-	}
-	return shortcutPath, nil
+    userPath := ""
+    for _, dirPath := range userPaths {
+        if dirPath != "" {
+            userPath = dirPath
+            break
+        }
+    }
+    if userPath == "" {
+        return "", fmt.Errorf("GetShortcutPath: no user path found")
+    }
+    return fmt.Sprintf("%s/config/shortcuts.vdf", userPath), nil
 }
 
 func (s *Steam) GetShortcuts() ([]shortcuts.Shortcut, error) {

@@ -18,11 +18,23 @@ import (
 
 //Status holds server statistics
 type Status struct {
-        Address string `json:"address"`
-        Online bool `json:"online"`
-        Lobbies int `json:"lobbies"`
-        MaxLobbies int `json:"maxLobbies"`
-        Players int `json:"playersOnline"`
+	Address string `json:"address"`
+	Online bool `json:"online"`
+	Lobbies int `json:"lobbies"`
+	MaxLobbies int `json:"maxLobbies"`
+	Players int `json:"playersOnline"`
+}
+
+//Manifest holds the current DLL manifest
+type Manifest struct {
+	BaseURL    string `json:"baseURL"`
+	Assemblies []DLL  `json:"assemblies"`
+}
+
+type DLL struct {
+	Filename     string `json:"filename"`
+	StockSHA256  string `json:"stock"`
+	ModdedSHA256 string `json:"modded"`
 }
 
 var (
@@ -33,8 +45,7 @@ var (
 	verbosityLevel = 0
 	ip = "72.9.147.58"
 	port = 1337
-	dll = "https://raw.githubusercontent.com/StickFightDev/StickFightLauncher/dev/mod/Assembly-CSharp.srv.dll"
-	dllSha256 = "https://raw.githubusercontent.com/StickFightDev/StickFightLauncher/dev/mod/SHA256"
+	dllManifest = "https://raw.githubusercontent.com/StickFightDev/StickFightLauncher/dev/mod/manifest.json"
 	modDll = "Assembly-CSharp.srv.dll"
 	noUpdate = false
 	noLauncherUpdate = false
@@ -42,20 +53,21 @@ var (
 	isSteam = false
 	sfExe = ""
 
-	installDLLs = []string{
-		"6058775b1416c1bf80bf3bc5cdd72ddbd55ae5482c087b884d02264dc6b0fbd1", //v25
-	}
-
 	serverStatus *Status
 )
+
+func panicLinux() {
+    if runtime.GOOS == "linux" {
+        logFatal("LINUX DEBUG")
+    }
+}
 
 func init() {
 	flag.BoolVar(&version, "version", version, "Set to display version info and exit with no operation")
 	flag.IntVar(&verbosityLevel, "verbosity", verbosityLevel, "The verbosity level of debug log output (0=none, 1=debug, 2=trace)")
 	flag.StringVar(&ip, "ip", ip, "The IP to connect to")
 	flag.IntVar(&port, "port", port, "The port to connect to")
-	flag.StringVar(&dll, "dll", dll, "The URL of the DLL to cache and install")
-	flag.StringVar(&dllSha256, "sha256", dllSha256, "The SHA256 URL for comparing the DLL")
+	flag.StringVar(&dllManifest, "dllManifest", dllManifest, "The URL of the DLL manifest to install from")
 	flag.StringVar(&modDll, "modDll", modDll, "The filename to give the cached assembly")
 	flag.BoolVar(&noUpdate, "noUpdate", noUpdate, "Set to only install the cached DLL, effectively offline mode")
 	flag.BoolVar(&noLauncherUpdate, "noLauncherUpdate", noLauncherUpdate, "Set to disable automatic launcher updates")
@@ -133,7 +145,7 @@ func main() {
 		if !FindInstall("StickFight.exe") {
 			found := false
 			for _, libraryFolder := range libraryFolders {
-				libraryPath := fmt.Sprintf("%s\\steamapps\\common\\StickFightTheGame\\StickFight.exe", libraryFolder)
+				libraryPath := fmt.Sprintf("%s/steamapps/common/StickFightTheGame/StickFight.exe", libraryFolder)
 				logDebug("Testing path: %s", libraryPath)
 				if FindInstall(libraryPath) {
 					found = true
@@ -147,14 +159,14 @@ func main() {
 	}
 	logInfo("Found Stick Fight: %s", sfExe)
 
-	installPath := filepath.Dir(sfExe) + "\\"
-	managedPath := installPath + "StickFight_Data\\Managed\\"
+	installPath := filepath.Dir(sfExe) + "/"
+	managedPath := installPath + "StickFight_Data/Managed/"
 
 	if !isSteam {
 		logDebug("Getting Steam shortcuts...")
 		shortcuts, err := steam.GetShortcuts()
 		if err != nil {
-			logFatal("%v", err)
+			logWarning("%v", err)
 		}
 
 		appName := "Stick Fight: Dedicated Server"
@@ -169,8 +181,9 @@ func main() {
 			if shortcut.AppName == appName {
 				logDebug("Shortcut already exists!")
 				createShortcut = false
-				break
+				//break
 			}
+            logDebug("Found shortcut: %v", shortcut)
 		}
 		
 		if createShortcut {
@@ -259,7 +272,7 @@ func main() {
 				}
 
 				logDebug("Writing new launcher...")
-				err = os.WriteFile(os.Args[0], downloadLauncher, 0777)
+				err = os.WriteFile(os.Args[0], downloadLauncher, 0666)
 				if err != nil {
 					logFatal("unable to write launcher: %v", err)
 				}
@@ -308,20 +321,40 @@ func main() {
 			logFatal("unable to find server assembly at path: %s", serverDLL)
 		}
 	} else {
-		logInfo("Checking for assembly updates...")
-		gitSHA256 := string(HTTPGET(dllSha256))
+		logInfo("Checking for server assembly updates...")
+		jsonManifest := HTTPGET(dllManifest)
+		if jsonManifest == nil {
+			logFatal("unable to check for server assembly updates")
+		}
 
-		if dllSHA256 != gitSHA256 {
-			logDebug("Stick Fight assembly (%s) is outdated, updating to (%s)...", dllSHA256, gitSHA256)
-			downloadDLL := HTTPGET(dll)
-			if len(downloadDLL) == 0 {
-				logFatal("%v", "unable to download server assembly")
-			}
+		manifest := &Manifest{}
+		err = json.Unmarshal(jsonManifest, manifest)
+		if err != nil {
+			logFatal("unable to unmarshal assembly manifest: %v", err)
+		}
 
-			err := os.WriteFile(serverDLL, downloadDLL, 0777)
-			if err != nil {
-				logFatal("unable to write server assembly: %v", err)
+		found := false
+		for _, dll := range manifest.Assemblies {
+			if dll.StockSHA256 == installSHA256 {
+				if dllSHA256 != dll.ModdedSHA256 {
+					logDebug("Stick Fight server assembly (%s) is outdated, updating to (%s)...", dllSHA256, dll.ModdedSHA256)
+					downloadDLL := HTTPGET(manifest.BaseURL + dll.Filename)
+					if downloadDLL == nil {
+						logFatal("unable to download server assembly")
+					}
+
+					err := os.WriteFile(serverDLL, downloadDLL, 0666)
+					if err != nil {
+						logFatal("unable to write server assembly: %v", err)
+					}
+				}
+
+				found = true
+				break
 			}
+		}
+		if !found {
+			logFatal("unable to find current game version in assembly manifest")
 		}
 	}
 
@@ -333,38 +366,40 @@ func main() {
 
 	logInfo("Launching Stick Fight...")
 	pidTime := time.Now()
-	sf := exec.Command("rundll32", "url.dll,FileProtocolHandler", fmt.Sprintf("steam://rungameid/674940 -address %s", ip))
+	sf := exec.Command("steam", fmt.Sprintf("steam://rungameid/674940 -address %s", ip))
 	sf.Stdout = os.Stdout
 	sf.Stderr = os.Stderr
 	sf.Stdin = os.Stdin
 	
 	err = sf.Run()
 	if err != nil {
-		logFatal("Process ended with code: %v", err)
+		logFatal("Failed to launch Stick Fight: %v", err)
 	}
 
-	logDebug("Scanning for StickFight.exe with a 15 second timeout...")
-	pid := -1
-	for {
-		pid, err = processID("StickFight.exe")
-		if err == nil {
-			break
-		}
-		if time.Since(pidTime).Seconds() > 15 {
-			logFatal("Unable to find PID by name: %v", err)
-		}
-	}
-
-	proc, err := os.FindProcess(pid)
+	proc, err := processFromName("StickFight.exe")
 	if err != nil {
-		logFatal("Unable to find process by PID: %v", err)
+        logWarning("Waiting up to 30 seconds for Stick Fight to launch...")
+        for {
+            proc, err = processFromName("StickFight.exe")
+            if err == nil {
+                break
+            }
+            if time.Since(pidTime).Seconds() > 30 {
+                logFatal("Unable to find Stick Fight: %v", err)
+            }
+        }
 	}
 
 	logInfo("Waiting for Stick Fight to exit...")
-	_, err = proc.Wait()
-	if err != nil {
-		logFatal("Game ended with code: %v", err)
-	}
+    for {
+        time.Sleep(time.Second * 1)
+        if running, err := proc.IsRunning(); running != true || err != nil {
+            logInfo("Stick Fight ended after %d seconds with code: %v", time.Since(pidTime).Seconds(), err)
+        }
+    }
+	//if err != nil {
+	//	logFatal("Game ended with code: %v", err)
+	//}
 }
 
 func Restore(backupDLL, installDLL string) {

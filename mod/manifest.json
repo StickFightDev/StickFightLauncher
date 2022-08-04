@@ -1,0 +1,7 @@
+{
+ "baseURL": "https://raw.githubusercontent.com/StickFightDev/StickFightLauncher/dev/mod/",
+ "assemblies": [
+  {"filename": "Assembly-CSharp.srv.v25.dll", "stock": "6058775b1416c1bf80bf3bc5cdd72ddbd55ae5482c087b884d02264dc6b0fbd1", "modded": "a144a803f4e1f3d1125041d55636d6656949f3f94afc7cceadda0c623777051b"},
+  {"filename": "Assembly-CSharp.srv.v26beta.dll", "stock": "fd81777b60be2d66b945f130af021e64f713afff537c3bf1ae447dc971f71d90", "modded": "c6b8cae473d0ad7a1897821cb2b7217d2de02b9f41ad070d5c157369c28c2aed"}
+ ]
+}
