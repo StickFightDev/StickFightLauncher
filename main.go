@@ -188,7 +188,7 @@ func main() {
 		
 		if createShortcut {
 			logInfo("Injecting Steam shortcut for %s...", appName)
-			launcherArgs := fmt.Sprintf("-steam -verbosity %d", verbosityLevel)
+			launcherArgs := fmt.Sprintf("-steam -verbosity %d -address %s -port %d", verbosityLevel, ip, port)
 			shortcut := steam.CreateShortcut(len(shortcuts),
 				appName, //Use either production or dev mode naming for the shortcut
 				appPath, //Use the correct path to the launcher
@@ -334,7 +334,9 @@ func main() {
 		}
 
 		found := false
+		logDebug("Stock DLL: %s", installSHA256)
 		for _, dll := range manifest.Assemblies {
+			logDebug("Trying DLL: %v", dll)
 			if dll.StockSHA256 == installSHA256 {
 				if dllSHA256 != dll.ModdedSHA256 {
 					logDebug("Stick Fight server assembly (%s) is outdated, updating to (%s)...", dllSHA256, dll.ModdedSHA256)
@@ -366,7 +368,10 @@ func main() {
 
 	logInfo("Launching Stick Fight...")
 	pidTime := time.Now()
-	sf := exec.Command("steam", fmt.Sprintf("steam://rungameid/674940 -address %s", ip))
+	sf := exec.Command("steam", fmt.Sprintf("steam://rungameid/674940 -address %s -port %d", ip, port))
+	if runtime.GOOS == "windows" {
+		sf = exec.Command("rundll32", "url.dll,FileProtocolHandler", fmt.Sprintf("steam://rungameid/674940 -address %s -port %d", ip, port))
+	}
 	sf.Stdout = os.Stdout
 	sf.Stderr = os.Stderr
 	sf.Stdin = os.Stdin
@@ -395,11 +400,9 @@ func main() {
         time.Sleep(time.Second * 1)
         if running, err := proc.IsRunning(); running != true || err != nil {
             logInfo("Stick Fight ended after %d seconds with code: %v", time.Since(pidTime).Seconds(), err)
+            break
         }
     }
-	//if err != nil {
-	//	logFatal("Game ended with code: %v", err)
-	//}
 }
 
 func Restore(backupDLL, installDLL string) {
