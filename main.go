@@ -188,7 +188,7 @@ func main() {
 		
 		if createShortcut {
 			logInfo("Injecting Steam shortcut for %s...", appName)
-			launcherArgs := fmt.Sprintf("-steam -verbosity %d -address %s -port %d", verbosityLevel, ip, port)
+			launcherArgs := fmt.Sprintf("-steam -verbosity %d -ip %s -port %d", verbosityLevel, ip, port)
 			shortcut := steam.CreateShortcut(len(shortcuts),
 				appName, //Use either production or dev mode naming for the shortcut
 				appPath, //Use the correct path to the launcher
