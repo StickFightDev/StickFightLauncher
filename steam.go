@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"unicode"
 
@@ -54,6 +55,14 @@ func NewSteam() (*Steam, error) {
 	}
 
 	return &Steam{DV: dv, SteamIDs: steamIds}, nil
+}
+
+func (s *Steam) GetExe() string {
+	exeExt := ""
+	if runtime.GOOS == "windows" {
+		exeExt = ".exe"
+	}
+	return fmt.Sprintf("%s/steam%s", s.DV.RootDirPath(), exeExt)
 }
 
 func (s *Steam) GetLibraryFolders() ([]string, error) {

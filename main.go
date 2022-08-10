@@ -78,13 +78,6 @@ func init() {
 }
 
 func main() {
-	if updated {
-		err := os.Remove(os.Args[0] + ".outdated.exe")
-		if err != nil {
-			logError("unable to remove outdated launcher: %v", err)
-		}
-	}
-
 	//Production updates are built with a go wrapper called govvv, but we don't want to lose our work in a dev environment
 	if BuildID == "sflaunch-" + runtime.Version() {
 		logPrefix("DEV", "Enabling developer mode...")
@@ -162,55 +155,60 @@ func main() {
 	installPath := filepath.Dir(sfExe) + "/"
 	managedPath := installPath + "StickFight_Data/Managed/"
 
+	logDebug("Getting Steam shortcuts...")
+	shortcuts, err := steam.GetShortcuts()
+	if err != nil {
+		logWarning("%v", err)
+	}
+
+	appName := "Stick Fight: Dedicated Server"
+	appPath := installPath + "StickFightLauncher.exe"
+	if dev {
+		appName = "Stick Fight: Dev Launcher"
+		appPath = os.Args[0]
+	}
+
+	shortcutIndex := -1
+	for i, shortcut := range shortcuts {
+		if shortcut.AppName == appName {
+			logDebug("Shortcut already exists!")
+			shortcutIndex = i
+			break
+		}
+           logDebug("Found shortcut: %v", shortcut.AppName)
+	}
+
+	logInfo("Generating Steam shortcut for %s...", appName)
+	launcherArgs := fmt.Sprintf("-steam -verbosity %d -ip %s -port %d", verbosityLevel, ip, port)
+	shortcut := steam.CreateShortcut(len(shortcuts),
+		appName, //Use either production or dev mode naming for the shortcut
+		appPath, //Use the correct path to the launcher
+		installPath, //Set working directory to game directory
+		sfExe, //Use Stick Fight's current icon
+		launcherArgs, //Pass good enough starter args
+		"favorite", "favorites", //Try to tag to favorites list
+	)
+
+	if shortcutIndex > -1 {
+		logInfo("Updating Steam shortcut #%d for %s...", shortcutIndex, appName)
+		shortcuts[shortcutIndex] = shortcut
+	} else {
+		logInfo("Adding new Steam shortcut for %s...", appName)
+		shortcuts = append(shortcuts, shortcut)
+	}
+
+	logDebug("Syncing Steam shortcuts to disk...")
+	err = steam.SaveShortcuts(shortcuts)
+	if err != nil {
+		logFatal("%v", err)
+	}
+
 	if !isSteam {
-		logDebug("Getting Steam shortcuts...")
-		shortcuts, err := steam.GetShortcuts()
-		if err != nil {
-			logWarning("%v", err)
-		}
-
-		appName := "Stick Fight: Dedicated Server"
-		appPath := installPath + "StickFightLauncher.exe"
-		if dev {
-			appName = "Stick Fight: Dev Launcher"
-			appPath = os.Args[0]
-		}
-
-		createShortcut := true
-		for _, shortcut := range shortcuts {
-			if shortcut.AppName == appName {
-				logDebug("Shortcut already exists!")
-				createShortcut = false
-				//break
-			}
-            logDebug("Found shortcut: %v", shortcut)
-		}
-		
-		if createShortcut {
-			logInfo("Injecting Steam shortcut for %s...", appName)
-			launcherArgs := fmt.Sprintf("-steam -verbosity %d -ip %s -port %d", verbosityLevel, ip, port)
-			shortcut := steam.CreateShortcut(len(shortcuts),
-				appName, //Use either production or dev mode naming for the shortcut
-				appPath, //Use the correct path to the launcher
-				installPath, //Set working directory to game directory
-				sfExe, //Use Stick Fight's current icon
-				launcherArgs, //Pass good enough starter args
-				"favorite", "favorites", //Try to tag to favorites list
-			)
-			shortcuts = append(shortcuts, shortcut)
-
-			logDebug("Saving Steam shortcuts...")
-			err = steam.SaveShortcuts(shortcuts)
-			if err != nil {
-				logFatal("%v", err)
-			}
-		}
-
 		if !dev {
 			logInfo("Migrating launcher into game directory...")
 			err = os.Rename(os.Args[0], installPath + "StickFightLauncher.exe")
 			if err != nil {
-				logError("unable to migrate launcher: %v", err)
+				logWarning("unable to migrate launcher: %v", err)
 
 				logDebug("Failed to migrate launcher, copying instead...")
 				_, err = CopyFile(os.Args[0], installPath + "StickFightLauncher.exe")
@@ -368,9 +366,9 @@ func main() {
 
 	logInfo("Launching Stick Fight...")
 	pidTime := time.Now()
-	sf := exec.Command("steam", fmt.Sprintf("steam://rungameid/674940 -address %s -port %d", ip, port))
+	sf := exec.Command(steam.GetExe(), "-applaunch", "674940", "-address", ip, "-port", fmt.Sprintf("%d", port))
 	if runtime.GOOS == "windows" {
-		sf = exec.Command("rundll32", "url.dll,FileProtocolHandler", fmt.Sprintf("steam://rungameid/674940 -address %s -port %d", ip, port))
+		sf = exec.Command(steam.GetExe(), "-applaunch", "674940", "-address", ip, "-port", fmt.Sprintf("%d", port))
 	}
 	sf.Stdout = os.Stdout
 	sf.Stderr = os.Stderr
@@ -398,8 +396,11 @@ func main() {
 	logInfo("Waiting for Stick Fight to exit...")
     for {
         time.Sleep(time.Second * 1)
-        if running, err := proc.IsRunning(); running != true || err != nil {
-            logInfo("Stick Fight ended after %d seconds with code: %v", time.Since(pidTime).Seconds(), err)
+        if running, err := proc.IsRunning(); running != true {
+        	if err != nil {
+        		logFatal("Stick Fight ended after %.2f seconds with error: %v", time.Since(pidTime).Seconds(), err)
+        	}
+            logInfo("Stick Fight ended after %.2f seconds with code: %v", time.Since(pidTime).Seconds(), err)
             break
         }
     }
