@@ -62,11 +62,11 @@ func (s *Steam) GetExe() string {
 	if runtime.GOOS == "windows" {
 		exeExt = ".exe"
 	}
-	return fmt.Sprintf("%s/steam%s", s.DV.RootDirPath(), exeExt)
+	return fmt.Sprintf("%s/steam%s", s.GetRootFolder(), exeExt)
 }
 
 func (s *Steam) GetLibraryFolders() ([]string, error) {
-	libraryVdf := fmt.Sprintf("%s/steamapps/libraryfolders.vdf", s.DV.RootDirPath())
+	libraryVdf := fmt.Sprintf("%s/steamapps/libraryfolders.vdf", s.GetRootFolder())
 
 	libraryRaw, err := ioutil.ReadFile(libraryVdf)
 	if err != nil {
