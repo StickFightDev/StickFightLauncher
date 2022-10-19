@@ -166,54 +166,6 @@ func main() {
 	assetsPath := sfDataPath + "StreamingAssets/"
 	musicPath := assetsPath + "Music/"
 
-	logDebug("Getting Steam shortcuts...")
-	shortcuts, err := steam.GetShortcuts()
-	if err != nil {
-		logWarning("%v", err)
-	}
-
-	appName := "Stick Fight: Dedicated Server"
-	appPath := installPath + "StickFightLauncher.exe"
-	if dev {
-		appName = "Stick Fight: Dev Launcher"
-		appPath = os.Args[0]
-	}
-
-	shortcutIndex := -1
-	for i, shortcut := range shortcuts {
-		logDebug("Found shortcut: %s %v", shortcut.AppName, shortcut)
-		if shortcut.AppName == appName {
-			logDebug("Shortcut already exists!")
-			shortcutIndex = i
-			break
-		}
-	}
-
-	logInfo("Generating Steam shortcut for %s...", appName)
-	launcherArgs := fmt.Sprintf("-steam -verbosity %d -ip %s -port %d", verbosityLevel, ip, port)
-	shortcut := steam.CreateShortcut(len(shortcuts),
-		appName, //Use either production or dev mode naming for the shortcut
-		appPath, //Use the correct path to the launcher
-		installPath, //Set working directory to game directory
-		sfExe, //Use Stick Fight's current icon
-		launcherArgs, //Pass good enough starter args
-		make([]string, 0),
-	)
-
-	if shortcutIndex > -1 {
-		logInfo("Updating Steam shortcut #%d for %s...", shortcutIndex, appName)
-		shortcuts[shortcutIndex] = shortcut
-	} else {
-		logInfo("Adding new Steam shortcut for %s...", appName)
-		shortcuts = append(shortcuts, shortcut)
-	}
-
-	logDebug("Syncing Steam shortcuts to disk...")
-	err = steam.SaveShortcuts(shortcuts)
-	if err != nil {
-		logFatal("%v", err)
-	}
-
 	if !isSteam {
 		if !dev {
 			logInfo("Migrating launcher into game directory...")
@@ -306,6 +258,54 @@ func main() {
 				os.Exit(0)
 			}
 		}
+	}
+
+	logDebug("Getting Steam shortcuts...")
+	shortcuts, err := steam.GetShortcuts()
+	if err != nil {
+		logWarning("%v", err)
+	}
+
+	appName := "Stick Fight: Dedicated Server"
+	appPath := installPath + "StickFightLauncher.exe"
+	if dev {
+		appName = "Stick Fight: Dev Launcher"
+		appPath = os.Args[0]
+	}
+
+	shortcutIndex := -1
+	for i, shortcut := range shortcuts {
+		logDebug("Found shortcut: %s %v", shortcut.AppName, shortcut)
+		if shortcut.AppName == appName {
+			logDebug("Shortcut already exists!")
+			shortcutIndex = i
+			break
+		}
+	}
+
+	logInfo("Generating Steam shortcut for %s...", appName)
+	launcherArgs := fmt.Sprintf("-steam -verbosity %d -ip %s -port %d", verbosityLevel, ip, port)
+	shortcut := steam.CreateShortcut(len(shortcuts),
+		appName, //Use either production or dev mode naming for the shortcut
+		appPath, //Use the correct path to the launcher
+		installPath, //Set working directory to game directory
+		sfExe, //Use Stick Fight's current icon
+		launcherArgs, //Pass good enough starter args
+		make([]string, 0),
+	)
+
+	if shortcutIndex > -1 {
+		logInfo("Updating Steam shortcut #%d for %s...", shortcutIndex, appName)
+		shortcuts[shortcutIndex] = shortcut
+	} else {
+		logInfo("Adding new Steam shortcut for %s...", appName)
+		shortcuts = append(shortcuts, shortcut)
+	}
+
+	logDebug("Syncing Steam shortcuts to disk...")
+	err = steam.SaveShortcuts(shortcuts)
+	if err != nil {
+		logFatal("%v", err)
 	}
 
 	installDLL := managedPath + "Assembly-CSharp.dll"

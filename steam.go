@@ -7,54 +7,26 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"unicode"
+	//"unicode"
 
-	"github.com/stephen-fox/steamutil/locations"
+	//"github.com/stephen-fox/steamutil/locations"
 	"github.com/stephen-fox/steamutil/shortcuts"
 	//"github.com/stephen-fox/steamutil/vdf"
 )
 
 //Steam holds a Steam instance
-type Steam struct {
-	DV       locations.DataVerifier //Transport for getting/verifying data related file and directory locations
-	SteamIDs []string               //SteamIDs of previously logged in users
-}
+type Steam struct {}
 
 //NewSteam verifies a valid Steam instance with at least one user account and returns an instance of it
 func NewSteam() (*Steam, error) {
-	if !locations.IsInstalled() {
-		return nil, fmt.Errorf("steam: not installed")
+	steam := &Steam{}
+
+	rootFolder := steam.GetRootFolder()
+	if rootFolder == "" {
+		return nil, fmt.Errorf("unable to find Steam install")
 	}
 
-	dv, err := locations.NewDataVerifier()
-	if err != nil {
-		return nil, err
-	}
-
-	userIdsToDirs, err := dv.UserIdsToDataDirPaths()
-	if err != nil {
-		return nil, err
-	}
-
-	if len(userIdsToDirs) == 0 {
-		return nil, fmt.Errorf("steam: no users found")
-	}
-
-	steamIds := make([]string, 0)
-	for steamId := range userIdsToDirs {
-		skip := false
-		for _, r := range steamId {
-			if !unicode.IsDigit(r) {
-				skip = true
-				break
-			}
-		}
-		if !skip {
-			steamIds = append(steamIds, steamId)
-		}
-	}
-
-	return &Steam{DV: dv, SteamIDs: steamIds}, nil
+	return steam, nil
 }
 
 func (s *Steam) GetExe() string {
@@ -85,10 +57,24 @@ func (s *Steam) GetLibraryFolders() ([]string, error) {
 	return libraryFolders, nil
 }
 
+func (s *Steam) UserIdsToDataDirPaths() (map[string]string, error) {
+	rootFolder := s.GetRootFolder()
+	idsToDirs := make(map[string]string)
+
+	infos, err := ioutil.ReadDir(rootFolder + "/userdata")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, info := range infos {
+		idsToDirs[info.Name()] = rootFolder + "/userdata/" + info.Name()
+	}
+	return idsToDirs, nil
+}
+
 //for now, only support one user
 func (s *Steam) GetShortcutPath() (string, error) {
-    //userPath, _, err := s.DV.UserDataDirPath()
-    userPaths, err := s.DV.UserIdsToDataDirPaths()
+    userPaths, err := s.UserIdsToDataDirPaths()
 	if err != nil {
 		return "", err
 	}

@@ -9,14 +9,14 @@ func (s *Steam) GetRootFolder() string {
 	if err != nil {
 		steamKey, err = registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\WOW6432Node\Valve\Steam`, registry.QUERY_VALUE)
 		if err != nil {
-			return s.DV.RootDirPath()
+			return ""
 		}
 	}
 	defer steamKey.Close()
 
 	installPath, _, err := steamKey.GetStringValue("InstallPath")
 	if err != nil {
-		return s.DV.RootDirPath()
+		return ""
 	}
 	return installPath
 }
