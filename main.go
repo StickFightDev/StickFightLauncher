@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/JoshuaDoes/json"
@@ -85,6 +87,12 @@ func main() {
 
 		logPrefix("DEV", "Disabling automatic launcher updates...")
 		noLauncherUpdate = true
+
+		logPrefix("DEV", "Disabling automatic DLL updates...")
+		noUpdate = true
+
+		logPrefix("DEV", "Forcing verbose logs")
+		verbosityLevel = 2
 	}
 
 	logPrefix("VERSION", "Stick Fight Launcher © JoshuaDoes 2022.")
@@ -135,19 +143,16 @@ func main() {
 
 	logDebug("Searching for Stick Fight...")
 	if !FindInstall(sfExe) {
-		if !FindInstall("StickFight.exe") {
-			found := false
-			for _, libraryFolder := range libraryFolders {
-				libraryPath := fmt.Sprintf("%s/steamapps/common/StickFightTheGame/StickFight.exe", libraryFolder)
-				logDebug("Testing path: %s", libraryPath)
-				if FindInstall(libraryPath) {
-					found = true
-					break
-				}
+		for _, libraryFolder := range libraryFolders {
+			libraryPath := fmt.Sprintf("%s/steamapps/common/StickFightTheGame/StickFight.exe", libraryFolder)
+			logDebug("Testing path: %s", libraryPath)
+			if FindInstall(libraryPath) {
+				sfExe = libraryPath
+				break
 			}
-			if !found {
-				logFatal("%v", "unable to find Stick Fight")
-			}
+		}
+		if sfExe == "" {
+			logFatal("%v", "unable to find Stick Fight")
 		}
 	}
 	logInfo("Found Stick Fight: %s", sfExe)
@@ -170,12 +175,12 @@ func main() {
 
 	shortcutIndex := -1
 	for i, shortcut := range shortcuts {
+		logDebug("Found shortcut: %s %v", shortcut.AppName, shortcut)
 		if shortcut.AppName == appName {
 			logDebug("Shortcut already exists!")
 			shortcutIndex = i
 			break
 		}
-           logDebug("Found shortcut: %v", shortcut.AppName)
 	}
 
 	logInfo("Generating Steam shortcut for %s...", appName)
@@ -186,7 +191,7 @@ func main() {
 		installPath, //Set working directory to game directory
 		sfExe, //Use Stick Fight's current icon
 		launcherArgs, //Pass good enough starter args
-		"favorite", "favorites", //Try to tag to favorites list
+		make([]string, 0),
 	)
 
 	if shortcutIndex > -1 {
@@ -315,6 +320,7 @@ func main() {
 	dllSHA256 := SHA256(serverDLL)
 
 	if noUpdate {
+		logDebug("Skipping automatic DLL updates...")
 		if !PathExists(serverDLL) {
 			logFatal("unable to find server assembly at path: %s", serverDLL)
 		}
@@ -374,36 +380,67 @@ func main() {
 	sf.Stderr = os.Stderr
 	sf.Stdin = os.Stdin
 	
-	err = sf.Run()
+	err = sf.Start()
 	if err != nil {
 		logFatal("Failed to launch Stick Fight: %v", err)
 	}
 
 	proc, err := processFromName("StickFight.exe")
 	if err != nil {
-        logWarning("Waiting up to 30 seconds for Stick Fight to launch...")
+        logWarning("Waiting up to 1 minute for Stick Fight to launch...")
         for {
             proc, err = processFromName("StickFight.exe")
             if err == nil {
                 break
             }
-            if time.Since(pidTime).Seconds() > 30 {
+            if time.Since(pidTime).Seconds() > 60 {
                 logFatal("Unable to find Stick Fight: %v", err)
             }
+            time.Sleep(time.Second * 1) //Sleep for 1 second so we don't kill the CPU looking for it
         }
 	}
 
+	var sig1 = syscall.SIGINT
+	var sig2 = syscall.SIGKILL
+	var watchdogDelay = (1 * time.Second)
+	logDebug("Creating signal channel")
+	sc := make(chan os.Signal, 1)
+	logDebug("Registering notification for %v on signal channel", sig1)
+	signal.Notify(sc, sig1)
+	logDebug("Registering notification for %v on signal channel", sig2)
+	signal.Notify(sc, sig2)
+	logDebug("Creating watchdog ticker for %d", watchdogDelay)
+	watchdogTicker := time.Tick(watchdogDelay)
+
 	logInfo("Waiting for Stick Fight to exit...")
-    for {
-        time.Sleep(time.Second * 1)
-        if running, err := proc.IsRunning(); running != true {
-        	if err != nil {
-        		logFatal("Stick Fight ended after %.2f seconds with error: %v", time.Since(pidTime).Seconds(), err)
-        	}
-            logInfo("Stick Fight ended after %.2f seconds with code: %v", time.Since(pidTime).Seconds(), err)
-            break
-        }
-    }
+	for {
+		select {
+		case <-watchdogTicker:
+			if running, err := proc.IsRunning(); !running {
+				if err != nil {
+					logFatal("Stick Fight ended after %.2f seconds with error: %v", time.Since(pidTime).Seconds(), err)
+				}
+	            logInfo("Stick Fight ended after %.2f seconds with code: %v", time.Since(pidTime).Seconds(), err)
+	            os.Exit(0)
+			}
+		case sig, ok := <-sc:
+			if ok {
+				logTrace("SIGNAL: %v", sig)
+				if running, _ := proc.IsRunning(); running {
+					logDebug("Terminating Stick Fight")
+					proc.Terminate()
+					logDebug("Waiting for Stick Fight to exit gracefully")
+					for {
+						if running, _ := proc.IsRunning(); !running {
+							break
+						}
+						time.Sleep(time.Second * 1)
+					}
+				}
+				os.Exit(0)
+			}
+		}
+	}
 }
 
 func Restore(backupDLL, installDLL string) {
@@ -422,7 +459,6 @@ func FindInstall(path string) bool {
 		return false
 	}
 
-	sfExe = path
 	return true
 }
 

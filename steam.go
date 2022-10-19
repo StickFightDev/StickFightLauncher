@@ -120,7 +120,7 @@ func (s *Steam) GetShortcuts() ([]shortcuts.Shortcut, error) {
 	return shortcuts.ReadFile(shortcutFile)
 }
 
-func (s *Steam) CreateShortcut(id int, appName, exePath, startDir, iconPath, launchOptions string, tags ...string) shortcuts.Shortcut {
+func (s *Steam) CreateShortcut(id int, appName, exePath, startDir, iconPath, launchOptions string, tags []string) shortcuts.Shortcut {
 	return shortcuts.Shortcut{
 		Id: id,
 		AppName: appName,
