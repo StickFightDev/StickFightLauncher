@@ -7,9 +7,11 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"runtime"
 	"syscall"
@@ -25,6 +27,7 @@ type Status struct {
 	Lobbies int `json:"lobbies"`
 	MaxLobbies int `json:"maxLobbies"`
 	Players int `json:"playersOnline"`
+	Tracks []string `json:"tracks"` //Default set of music tracks
 }
 
 //Manifest holds the current DLL manifest
@@ -158,7 +161,10 @@ func main() {
 	logInfo("Found Stick Fight: %s", sfExe)
 
 	installPath := filepath.Dir(sfExe) + "/"
-	managedPath := installPath + "StickFight_Data/Managed/"
+	sfDataPath := installPath + "StickFight_Data/"
+	managedPath := sfDataPath + "Managed/"
+	assetsPath := sfDataPath + "StreamingAssets/"
+	musicPath := assetsPath + "Music/"
 
 	logDebug("Getting Steam shortcuts...")
 	shortcuts, err := steam.GetShortcuts()
@@ -370,6 +376,35 @@ func main() {
 		logFatal("%v", "unable to install server assembly")
 	}
 
+	logInfo("Custom music directory: " + musicPath)
+	music, err := ioutil.ReadDir(musicPath)
+	if err != nil || len(music) == 0 {
+		if len(serverStatus.Tracks) > 0 {
+			logInfo("Downloading default music tracks...")
+			os.MkdirAll(musicPath, 0666)
+			for i, track := range serverStatus.Tracks {
+				trackURL, err := url.Parse(track)
+				if err != nil {
+					logError("invalid track URL: %s", track)
+					continue
+				}
+				trackName := path.Base(trackURL.Path)
+				logInfo("Downloading track %d: %s", i+1, track)
+				trackRaw := HTTPGET(track)
+				if trackRaw == nil {
+					logError("unable to download track %d", i+1)
+					continue
+				}
+				err = os.WriteFile(musicPath + trackName, trackRaw, 0666)
+				if err != nil {
+					logFatal("unable to write track %d: %v", i+1, err)
+				}
+			}
+		}
+	} else {
+		logInfo("Music tracks were found, refusing to download new ones")
+	}
+
 	logInfo("Launching Stick Fight...")
 	pidTime := time.Now()
 	sf := exec.Command(steam.GetExe(), "-applaunch", "674940", "-address", ip, "-port", fmt.Sprintf("%d", port))
@@ -420,7 +455,7 @@ func main() {
 				if err != nil {
 					logFatal("Stick Fight ended after %.2f seconds with error: %v", time.Since(pidTime).Seconds(), err)
 				}
-	            logInfo("Stick Fight ended after %.2f seconds with code: %v", time.Since(pidTime).Seconds(), err)
+	            logInfo("Stick Fight closed gracefully after %.2f seconds", time.Since(pidTime).Seconds())
 	            os.Exit(0)
 			}
 		case sig, ok := <-sc:
