@@ -456,7 +456,7 @@ func main() {
 					logFatal("Stick Fight ended after %.2f seconds with error: %v", time.Since(pidTime).Seconds(), err)
 				}
 	            logInfo("Stick Fight closed gracefully after %.2f seconds", time.Since(pidTime).Seconds())
-	            os.Exit(0)
+	            return
 			}
 		case sig, ok := <-sc:
 			if ok {
@@ -472,7 +472,7 @@ func main() {
 						time.Sleep(time.Second * 1)
 					}
 				}
-				os.Exit(0)
+				return
 			}
 		}
 	}
